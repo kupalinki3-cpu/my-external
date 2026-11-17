@@ -1,0 +1,48 @@
+# Skopiuj do config.yaml i uzupełnij.
+
+vinted:
+  domain: vinted.pl          # vinted.de, vinted.fr ...
+  poll_interval_sec: 20      # nie schodź poniżej ~15 s, bo grozi blokada IP
+  per_page: 48
+
+discord:
+  channel_id: 123456789012345678   # kanał, na który lecą oferty
+  token_env: DISCORD_TOKEN         # nazwa zmiennej środowiskowej z tokenem
+
+ai:
+  enabled: true
+  model: claude-opus-5-5
+  effort: low                # low wystarcza do klasyfikacji, high = dokładniej, drożej
+  max_images: 4
+
+messages:
+  gender: m                  # m / f: "wziął" / "wzięła" w wiadomościach do sprzedawców
+
+strategy:
+  buy_below_ratio: 0.65      # kup, gdy cena <= 65% rynku
+  offer_discount: 0.30       # inaczej zaproponuj -30%
+  min_profit: 100            # minimalny zysk w zł
+  resale_haircut: 0.10       # odsprzedasz ~10% taniej niż mediana, żeby zeszło szybko
+  shipping_cost: 15
+  buyer_fee_fixed: 0.70      # ochrona kupujących Vinted
+  buyer_fee_pct: 0.05
+  too_good_ratio: 0.30       # poniżej 30% rynku = podejrzanie tanio
+  min_price_samples: 5       # tyle sprzedaży potrzeba do mediany
+  price_history_days: 30
+  risk:
+    medium: 30
+    high: 60                 # od tylu punktów oferta idzie do Approve/Deny jako ryzykowna
+
+watches:
+  - name: iphone-13-pro
+    search_text: "iphone 13 pro"
+    kind: electronics        # clothes | shoes | electronics | other
+    price_to: 2500
+    reference_price: 2200    # na start ręcznie, potem bot liczy z historii
+    min_profit: 200
+
+  - name: stone-island
+    search_text: "stone island"
+    kind: clothes
+    price_to: 400
+    reference_price: 450

@@ -1,0 +1,5 @@
+anthropic>=2.10
+discord.py>=2.7
+httpx>=0.28
+PyYAML>=6.0
+pytest>=8
