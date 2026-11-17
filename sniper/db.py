@@ -7,6 +7,7 @@ import sqlite3
 import time
 
 from .models import Evaluation, Listing
+from .pricing import Comparable
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS listings (
@@ -16,6 +17,7 @@ CREATE TABLE IF NOT EXISTS listings (
     price REAL,
     currency TEXT,
     url TEXT,
+    condition TEXT DEFAULT '',
     first_seen REAL,
     last_seen REAL,
     status TEXT DEFAULT 'active'  -- active | sold | gone
@@ -45,6 +47,10 @@ class Database:
         self.conn = sqlite3.connect(path)
         self.conn.row_factory = sqlite3.Row
         self.conn.executescript(SCHEMA)
+        # Migracja starszych baz bez kolumny condition
+        cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(listings)")}
+        if "condition" not in cols:
+            self.conn.execute("ALTER TABLE listings ADD COLUMN condition TEXT DEFAULT ''")
 
     def is_seen(self, listing_id: int) -> bool:
         cur = self.conn.execute("SELECT 1 FROM listings WHERE id = ?", (listing_id,))
@@ -53,11 +59,12 @@ class Database:
     def upsert_listing(self, listing: Listing) -> None:
         now = time.time()
         self.conn.execute(
-            """INSERT INTO listings (id, watch, title, price, currency, url, first_seen, last_seen)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-               ON CONFLICT(id) DO UPDATE SET price = excluded.price, last_seen = excluded.last_seen""",
+            """INSERT INTO listings (id, watch, title, price, currency, url, condition, first_seen, last_seen)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(id) DO UPDATE SET price = excluded.price, last_seen = excluded.last_seen,
+                   status = 'active'""",
             (listing.id, listing.watch, listing.title, listing.price,
-             listing.currency, listing.url, now, now),
+             listing.currency, listing.url, listing.condition, now, now),
         )
         self.conn.commit()
 
@@ -74,13 +81,15 @@ class Database:
         self.conn.execute("UPDATE listings SET status = ? WHERE id = ?", (status, listing_id))
         self.conn.commit()
 
-    def sold_prices(self, watch: str, days: int) -> list[float]:
+    def comparables(self, watch: str, status: str, days: int) -> list[Comparable]:
+        """Oferty z danej obserwacji: aktywne (do porównania cen) albo sprzedane."""
         cutoff = time.time() - days * 86400
         rows = self.conn.execute(
-            "SELECT price FROM listings WHERE watch = ? AND status = 'sold' AND last_seen >= ?",
-            (watch, cutoff),
+            "SELECT id, title, price, condition FROM listings "
+            "WHERE watch = ? AND status = ? AND last_seen >= ?",
+            (watch, status, cutoff),
         ).fetchall()
-        return [r["price"] for r in rows]
+        return [Comparable(r["id"], r["title"] or "", r["price"], r["condition"] or "") for r in rows]
 
     def save_decision(self, ev: Evaluation, message_id: int | None = None) -> None:
         self.conn.execute(

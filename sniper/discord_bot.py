@@ -46,7 +46,9 @@ def build_embeds(ev: Evaluation) -> list[discord.Embed]:
     )
     embed.add_field(name="Cena", value=f"**{l.price:.0f} {cur}**")
     if ev.reference_price:
-        embed.add_field(name="Rynek", value=f"{ev.reference_price:.0f} {cur} ({l.price / ev.reference_price:.0%})")
+        value = ev.market_note or f"{ev.reference_price:.0f} {cur}"
+        embed.add_field(name="Realna cena odsprzedaży",
+                        value=f"{value}\noferta = {l.price / ev.reference_price:.0%} tej ceny")
     if ev.expected_profit is not None:
         embed.add_field(name="Zysk (szac.)", value=f"{ev.expected_profit:.0f} {cur}")
     if ev.planned_action == Decision.OFFER and ev.offer_price:

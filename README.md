@@ -37,15 +37,39 @@ a kupujesz, jak sprzedawca odpowie.
 ## Opłacalność
 
 ```
-koszt   = cena + 0,70 zł + 5% ceny (ochrona kupujących) + wysyłka
-sprzedaż = cena rynkowa × (1 − 10%)        # trochę taniej, żeby szybko zeszło
-zysk    = sprzedaż − koszt
+koszt    = cena + 0,70 zł + 5% ceny (ochrona kupujących) + wysyłka
+sprzedaż = realna cena odsprzedaży × 0,95
+zysk     = sprzedaż − koszt
 ```
 
-**Cena rynkowa** to `reference_price` z configu (na start) albo mediana cen
-ofert z ostatnich 30 dni, które się sprzedały. Bot sam zbiera tę historię:
-zapamiętuje oferty, a gdy znikną z wyników, sprawdza, czy zostały sprzedane.
+**Realna cena odsprzedaży** to najniższa z dostępnych wycen:
+
+1. **Podobne oferty na Vinted**: bot zbiera ogłoszenia z tej samej obserwacji
+   (na start kilka stron, potem na bieżąco) i wybiera podobne: zbliżony tytuł
+   (np. 128GB ≠ 256GB), najlepiej ten sam stan, bez atrap, pudełek i akcesoriów.
+   Bierze **35. percentyl**, czyli cenę niższą niż u 65% konkurencji. Używane
+   rzeczy schodzą tanio, a średnia z ogłoszeń jest zawyżona przez ludzi, którzy
+   wystawiają drogo i nigdy nie sprzedają.
+2. **Ceny sprzedanych ofert**: oferty, które zniknęły z wyników i zostały
+   sprzedane (mediana z 30 dni).
+3. **`reference_price` z configu**, jeśli ustawisz: działa jak górny limit.
+
 Wszystkie progi zmienisz w sekcji `strategy`.
+
+## AI: API czy lokalny model?
+
+| | Claude API (`anthropic`) | Lokalny (`ollama`) |
+|---|---|---|
+| Koszt | Haiku 5.5: ~0,5 gr / ofertę, Opus 5.5: ~15 gr / ofertę | 0 zł (prąd) |
+| Sprzęt | żaden | karta graficzna z ~8 GB+ VRAM |
+| Trafność (atrapy na zdjęciach) | najlepsza | wyraźnie słabsza przy małych modelach |
+| Szybkość | 2–5 s | 5–30 s, zależnie od karty |
+
+AI sprawdza tylko oferty, które przeszły filtr ceny i reguły (zwykle kilka
+procent wszystkich), więc nawet przy API koszt jest niewielki.
+
+Lokalnie: zainstaluj [Ollama](https://ollama.com), `ollama pull qwen2.5vl:7b`,
+w configu ustaw `ai.provider: ollama`.
 
 ## Uruchomienie
 
@@ -55,7 +79,7 @@ pip install -r requirements.txt
 cp config.example.yaml config.yaml     # uzupełnij kanał i obserwacje
 
 export DISCORD_TOKEN=...               # token bota z Discord Developer Portal
-export ANTHROPIC_API_KEY=...           # klucz do Claude (jeśli ai.enabled)
+export ANTHROPIC_API_KEY=...           # klucz do Claude (gdy ai.provider: anthropic)
 python -m sniper.main config.yaml
 ```
 

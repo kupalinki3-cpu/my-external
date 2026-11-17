@@ -5,7 +5,7 @@ from sniper.config import StrategyConfig, Watch
 from sniper.engine import evaluate, has_potential
 from sniper.messages import build_seller_message
 from sniper.models import AICategory, AIVerdict, Decision, Listing, RiskLevel, Seller
-from sniper.pricing import buyer_cost, expected_profit, offer_price, reference_price
+from sniper.pricing import buyer_cost, expected_profit, offer_price
 
 CFG = StrategyConfig()
 WATCH = Watch(name="iphone", search_text="iphone 13 pro", kind="electronics")
@@ -41,16 +41,9 @@ def run(coro):
 def test_profit_math():
     # 1000 zł: 0.70 + 5% (50) + 15 wysyłki
     assert buyer_cost(1000, CFG) == 1065.70
-    # odsprzedaż 2000 * 0.9 = 1800
-    assert expected_profit(1000, 2000, CFG) == 734.30
+    # odsprzedaż 2000 * 0.95 = 1900
+    assert expected_profit(1000, 2000, CFG) == 834.30
     assert offer_price(1000, CFG) == 700
-
-
-def test_reference_price_needs_samples():
-    assert reference_price(WATCH, [1000, 1100], CFG) is None
-    assert reference_price(WATCH, [1000, 1100, 1200, 1300, 5000], CFG) == 1200
-    manual = Watch(name="x", search_text="x", reference_price=900)
-    assert reference_price(manual, [], CFG) == 900
 
 
 def test_big_discount_low_risk_is_buy():
@@ -68,7 +61,7 @@ def test_small_margin_becomes_offer():
 
 def test_no_profit_even_after_offer_is_skip():
     ai = FakeAI(verdict())
-    ev = run(evaluate(make_listing(2600), WATCH, 2200, CFG, ai))
+    ev = run(evaluate(make_listing(3200), WATCH, 2200, CFG, ai))
     assert ev.decision == Decision.SKIP
     assert ai.calls == 0  # nie płacimy za AI, gdy nie ma zysku
 
@@ -98,7 +91,7 @@ def test_high_risk_goes_to_review():
 
 def test_has_potential_prefilter():
     assert has_potential(1900, 2200, WATCH, CFG)
-    assert not has_potential(2600, 2200, WATCH, CFG)
+    assert not has_potential(3200, 2200, WATCH, CFG)
     assert not has_potential(100, None, WATCH, CFG)
 
 

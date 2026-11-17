@@ -1,15 +1,22 @@
-"""Klasyfikacja oferty przez Claude: tytuł + opis + zdjęcia.
+"""Klasyfikacja oferty przez model AI: tytuł + opis + zdjęcia.
+
+Dwa warianty (wybór w config.yaml -> ai.provider):
+- anthropic: Claude przez API (płatne za użycie, najlepsza trafność),
+- ollama: lokalny model wizyjny na Twoim komputerze (darmowe, potrzebna karta graficzna).
 
 Wywoływana dopiero, gdy oferta przeszła twarde reguły i ma potencjał zysku,
-więc płacimy tylko za kilka procent ofert.
+więc sprawdzamy tylko kilka procent ofert.
 """
 
 from __future__ import annotations
 
+import asyncio
+import base64
 import json
 import logging
 
 import anthropic
+import httpx
 
 from ..config import AIConfig
 from ..models import AICategory, AIVerdict, Listing
@@ -63,16 +70,7 @@ class AIClassifier:
         if with_images:
             for url in listing.photos[: self.cfg.max_images]:
                 content.append({"type": "image", "source": {"type": "url", "url": url}})
-        content.append({
-            "type": "text",
-            "text": (
-                f"Buyer is searching for: {query}\n"
-                f"Title: {listing.title}\n"
-                f"Price: {listing.price} {listing.currency}\n"
-                f"Brand: {listing.brand}\nCondition: {listing.condition}\n"
-                f"Description:\n{listing.description or '(no description)'}"
-            ),
-        })
+        content.append({"type": "text", "text": listing_prompt(listing, query)})
         return content
 
     async def _call(self, content: list[dict]):
@@ -113,14 +111,81 @@ class AIClassifier:
             return None
 
         text = next((b.text for b in resp.content if b.type == "text"), None)
-        if not text:
-            return None
+        return parse_verdict(text)
+
+
+def listing_prompt(listing: Listing, query: str) -> str:
+    return (
+        f"Buyer is searching for: {query}\n"
+        f"Title: {listing.title}\n"
+        f"Price: {listing.price} {listing.currency}\n"
+        f"Brand: {listing.brand}\nCondition: {listing.condition}\n"
+        f"Description:\n{listing.description or '(no description)'}"
+    )
+
+
+def parse_verdict(text: str | None) -> AIVerdict | None:
+    if not text:
+        return None
+    try:
         data = json.loads(text)
         return AIVerdict(
             category=AICategory(data["category"]),
             confidence=max(0.0, min(1.0, float(data["confidence"]))),
             scam_risk=max(0, min(100, int(data["scam_risk"]))),
             matches_query=bool(data["matches_query"]),
-            red_flags=list(data["red_flags"]),
-            summary=data["summary"],
+            red_flags=[str(f) for f in data.get("red_flags", [])],
+            summary=str(data.get("summary", "")),
         )
+    except (ValueError, KeyError, TypeError):
+        log.warning("AI: nie da się odczytać odpowiedzi: %.200s", text)
+        return None
+
+
+class OllamaClassifier:
+    """Lokalny model przez Ollama (https://ollama.com).
+
+    Ollama nie pobiera zdjęć z URL, więc ściągamy je sami i wysyłamy w base64.
+    Model musi obsługiwać obrazy, np. qwen2.5vl:7b, gemma3:12b, llama3.2-vision.
+    """
+
+    def __init__(self, cfg: AIConfig):
+        self.cfg = cfg
+        self.http = httpx.AsyncClient(timeout=180)
+
+    async def _image_b64(self, url: str) -> str | None:
+        try:
+            resp = await self.http.get(url, timeout=20)
+            resp.raise_for_status()
+            return base64.b64encode(resp.content).decode()
+        except httpx.HTTPError:
+            return None
+
+    async def classify(self, listing: Listing, query: str) -> AIVerdict | None:
+        urls = listing.photos[: self.cfg.max_images]
+        images = [b for b in await asyncio.gather(*(self._image_b64(u) for u in urls)) if b]
+        payload = {
+            "model": self.cfg.ollama_model,
+            "stream": False,
+            "format": SCHEMA,  # Ollama wymusza odpowiedź zgodną ze schematem JSON
+            "options": {"temperature": 0},
+            "messages": [
+                {"role": "system", "content": SYSTEM},
+                {"role": "user", "content": listing_prompt(listing, query), "images": images},
+            ],
+        }
+        try:
+            resp = await self.http.post(f"{self.cfg.ollama_url}/api/chat", json=payload)
+            resp.raise_for_status()
+        except httpx.HTTPError as e:
+            log.error("Ollama: %s (czy działa `ollama serve` i jest pobrany model?)", e)
+            return None
+        return parse_verdict(resp.json().get("message", {}).get("content"))
+
+
+def make_classifier(cfg: AIConfig):
+    if cfg.provider == "ollama":
+        return OllamaClassifier(cfg)
+    if cfg.provider == "anthropic":
+        return AIClassifier(cfg)
+    raise ValueError(f"Nieznany ai.provider: {cfg.provider} (dozwolone: anthropic, ollama)")

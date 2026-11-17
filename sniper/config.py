@@ -30,6 +30,8 @@ class VintedConfig:
     domain: str = "vinted.pl"
     poll_interval_sec: float = 20.0
     per_page: int = 48
+    # Ile stron ofert pobrać przy starcie, żeby mieć z czym porównywać ceny
+    seed_pages: int = 5
     user_agent: str = (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
         "(KHTML, like Gecko) Chrome/130.0 Safari/537.36"
@@ -45,9 +47,13 @@ class DiscordConfig:
 @dataclass
 class AIConfig:
     enabled: bool = True
+    # anthropic = Claude przez API, ollama = lokalny model na Twoim komputerze
+    provider: str = "anthropic"
     model: str = "claude-opus-5-5"
     effort: str = "low"
     max_images: int = 4
+    ollama_url: str = "http://localhost:11434"
+    ollama_model: str = "qwen2.5vl:7b"
 
 
 @dataclass
@@ -63,8 +69,17 @@ class StrategyConfig:
     # Proponowana zniżka, gdy marża jest za mała przy obecnej cenie
     offer_discount: float = 0.30
     min_profit: float = 100.0
-    # Ile taniej trzeba będzie sprzedać, żeby zeszło szybko
-    resale_haircut: float = 0.10
+    # Dodatkowy zapas na cenie odsprzedaży (wycena i tak jest z dolnej części rynku)
+    resale_haircut: float = 0.05
+    # Który percentyl cen podobnych ofert to realna cena odsprzedaży
+    # (0.35 = taniej niż 65% konkurencji, żeby faktycznie zeszło)
+    resale_percentile: float = 0.35
+    # Minimalna liczba podobnych ofert, żeby im ufać
+    min_comparables: int = 5
+    # Z ilu dni brać aktywne oferty do porównania
+    comparable_days: int = 14
+    # Jak bardzo tytuł musi być podobny (0..1, wspólne słowa / wszystkie słowa)
+    similarity_min: float = 0.35
     shipping_cost: float = 15.0
     # Ochrona kupujących Vinted: stała + procent
     buyer_fee_fixed: float = 0.70

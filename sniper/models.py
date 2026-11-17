@@ -78,3 +78,5 @@ class Evaluation:
     # Co zrobić po zatwierdzeniu na Discordzie (BUY albo OFFER)
     planned_action: Decision | None = None
     ai: AIVerdict | None = None
+    # Skąd wzięła się cena rynkowa, np. "1850 zł (podobne oferty, 23 ofert)"
+    market_note: str = ""

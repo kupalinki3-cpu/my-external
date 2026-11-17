@@ -44,12 +44,12 @@ class VintedClient:
             resp = await self.http.get(f"{self.base}{path}", params=params)
         return resp
 
-    async def search_newest(self, watch: Watch) -> list[dict[str, Any]]:
+    async def search_newest(self, watch: Watch, page: int = 1) -> list[dict[str, Any]]:
         params: dict[str, Any] = {
             "search_text": watch.search_text,
             "order": "newest_first",
             "per_page": self.cfg.per_page,
-            "page": 1,
+            "page": page,
         }
         if watch.price_from is not None:
             params["price_from"] = watch.price_from
