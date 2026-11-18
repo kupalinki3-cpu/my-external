@@ -12,11 +12,13 @@ import re
 from typing import Awaitable, Callable
 
 import discord
+import httpx
 from discord import app_commands
 
 from .config import Config, Watch
 from .db import Database
 from .feedback import build_report, format_report, format_stats, profit_stats
+from .resale import ListingWriter, build_draft, format_draft
 from .messages import build_seller_message
 from .models import Decision, Evaluation, RiskLevel
 
@@ -59,6 +61,8 @@ def build_embeds(ev: Evaluation) -> list[discord.Embed]:
     embed.add_field(name="Ryzyko", value=f"{RISK_LABEL[ev.risk_level]} ({ev.risk_score}/100)")
     if ev.planned_action:
         embed.add_field(name="Plan", value=ACTION_LABEL[ev.planned_action])
+    if ev.liquidity_note:
+        embed.add_field(name="Jak szybko schodzi", value=ev.liquidity_note, inline=False)
 
     seller = l.seller
     seller_txt = seller.login or "?"
@@ -114,11 +118,14 @@ KIND_CHOICES = [
 
 
 class SniperBot(discord.Client):
-    def __init__(self, cfg: Config, db: Database, scanner: Callable[["SniperBot"], Awaitable[None]]):
+    def __init__(self, cfg: Config, db: Database, scanner: Callable[["SniperBot"], Awaitable[None]],
+                 writer: ListingWriter | None = None):
         super().__init__(intents=discord.Intents.default())
         self.cfg = cfg
         self.db = db
         self._scanner = scanner
+        self.writer = writer
+        self._http = httpx.AsyncClient(timeout=10)
         self.tree = app_commands.CommandTree(self)
         self._register_commands()
 
@@ -144,8 +151,35 @@ class SniperBot(discord.Client):
 
     async def post(self, ev: Evaluation) -> int | None:
         channel = await self._channel()
-        msg = await channel.send(embeds=build_embeds(ev), view=build_view(ev.listing.id))
+        n = self.cfg.notify
+        content = None
+        if ev.priority:
+            content = "🔥 **Najlepsza okazja**"
+            if n.mention_user_id:
+                content = f"<@{n.mention_user_id}> {content}"
+        msg = await channel.send(
+            content=content, embeds=build_embeds(ev), view=build_view(ev.listing.id),
+            allowed_mentions=discord.AllowedMentions(users=True),
+            silent=not ev.priority,  # zwykłe oferty bez dźwięku powiadomienia
+        )
+        if ev.priority and n.ntfy_topic:
+            await self._push(ev)
         return msg.id
+
+    async def _push(self, ev: Evaluation) -> None:
+        """Push na telefon przez ntfy (https://ntfy.sh)."""
+        n, l = self.cfg.notify, ev.listing
+        body = f"{l.price:.0f} zł, zysk ~{ev.expected_profit or 0:.0f} zł"
+        if ev.planned_action == Decision.OFFER and ev.offer_price:
+            body += f" (po ofercie {ev.offer_price:.0f} zł)"
+        try:
+            # Format JSON: polskie znaki w tytule działają bez kombinowania z nagłówkami
+            await self._http.post(n.ntfy_url, json={
+                "topic": n.ntfy_topic, "title": l.title[:100], "message": body,
+                "click": l.url, "priority": 4, "tags": ["moneybag"],
+            })
+        except httpx.HTTPError as e:
+            log.warning("ntfy: %s", e)
 
     async def post_text(self, text: str) -> None:
         channel = await self._channel()
@@ -196,6 +230,13 @@ class SniperBot(discord.Client):
                 "Kup dopiero, jak odpowie i wszystko się zgadza. "
                 f"Po zakupie: `/kupione oferta:{listing_id} cena:<zł>`"
             )
+
+    async def _draft_for(self, row) -> str:
+        s = self.cfg.strategy
+        active = self.db.comparables(row["watch"], "active", s.comparable_days)
+        draft = await build_draft(row["title"] or "", row["description"] or "", row["condition"] or "",
+                                  active, s, self.writer)
+        return format_draft(draft)[:2000]
 
     # ---------- komendy ----------
 
@@ -283,6 +324,19 @@ class SniperBot(discord.Client):
                 f"🛒 Zakup **#{pid}**: {title} za {cena:.0f} zł. "
                 f"Po sprzedaży: `/sprzedane zakup:{pid} cena:<zł>`"
             )
+            if row:
+                await inter.followup.send(await self._draft_for(row))
+
+        @tree.command(name="ogloszenie", description="Wygeneruj ogłoszenie do odsprzedaży")
+        @app_commands.describe(oferta="link albo id oferty, którą kupiłeś")
+        async def ogloszenie(inter: discord.Interaction, oferta: str):
+            lid = parse_listing_id(oferta)
+            row = db.get_listing(lid) if lid else None
+            if row is None:
+                await inter.response.send_message("Nie znam tej oferty (bot jej nie widział).")
+                return
+            await inter.response.defer(thinking=True)
+            await inter.followup.send(await self._draft_for(row))
 
         @tree.command(name="sprzedane", description="Zapisz sprzedaż")
         @app_commands.describe(zakup="numer zakupu (#) albo link/id oferty", cena="ile dostałeś na rękę")

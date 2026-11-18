@@ -20,6 +20,7 @@ CREATE TABLE IF NOT EXISTS listings (
     currency TEXT,
     url TEXT,
     condition TEXT DEFAULT '',
+    description TEXT DEFAULT '',
     first_seen REAL,
     last_seen REAL,
     status TEXT DEFAULT 'active'  -- active | sold | gone
@@ -96,6 +97,8 @@ class Database:
         cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(listings)")}
         if "condition" not in cols:
             self.conn.execute("ALTER TABLE listings ADD COLUMN condition TEXT DEFAULT ''")
+        if "description" not in cols:
+            self.conn.execute("ALTER TABLE listings ADD COLUMN description TEXT DEFAULT ''")
 
     def _exec(self, sql: str, params: tuple = ()) -> sqlite3.Cursor:
         cur = self.conn.execute(sql, params)
@@ -138,11 +141,20 @@ class Database:
         """Oferty z danej obserwacji: aktywne (do porównania cen) albo sprzedane."""
         cutoff = time.time() - days * 86400
         rows = self.conn.execute(
-            "SELECT id, title, price, condition FROM listings "
+            "SELECT id, title, price, condition, first_seen, last_seen FROM listings "
             "WHERE watch = ? AND status = ? AND last_seen >= ?",
             (watch, status, cutoff),
         ).fetchall()
-        return [Comparable(r["id"], r["title"] or "", r["price"], r["condition"] or "") for r in rows]
+        return [
+            Comparable(
+                r["id"], r["title"] or "", r["price"], r["condition"] or "",
+                days_listed=(r["last_seen"] - r["first_seen"]) / 86400 if status == "sold" else None,
+            )
+            for r in rows
+        ]
+
+    def set_description(self, listing_id: int, description: str) -> None:
+        self._exec("UPDATE listings SET description = ? WHERE id = ?", (description, listing_id))
 
     # ---------- decyzje ----------
 

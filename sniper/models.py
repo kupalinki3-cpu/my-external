@@ -82,3 +82,7 @@ class Evaluation:
     market_note: str = ""
     # Dodatkowy nagłówek alertu, np. "📉 cena spadła z 1900 na 1500 zł"
     alert_note: str = ""
+    # Jak szybko schodzą podobne, np. "~6 dni, 3.5 szt./tydz."
+    liquidity_note: str = ""
+    # Najlepsze okazje: ping na Discordzie i push na telefon
+    priority: bool = False

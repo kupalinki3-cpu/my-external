@@ -57,6 +57,7 @@ alert *„📉 Cena spadła z 2600 na 1500 zł”*.
 | `/pauza [nazwa]` / `/wznow [nazwa]` | wstrzymuje jedną obserwację albo cały bot |
 | `/lista` | pokazuje obserwacje |
 | `/kupione oferta cena` | zapisuje zakup (link albo id z Vinted) |
+| `/ogloszenie oferta` | generuje ogłoszenie do odsprzedaży |
 | `/sprzedane zakup cena` | zapisuje sprzedaż (numer zakupu albo link) |
 | `/stats` | zysk, liczba sprzedanych, średni czas sprzedaży, wyniki wg obserwacji |
 | `/raport` | czego bot nauczył się z Twoich Approve/Deny i sugerowany próg ryzyka |
@@ -113,6 +114,39 @@ procent wszystkich), więc nawet przy API koszt jest niewielki.
 
 Lokalnie: zainstaluj [Ollama](https://ollama.com), `ollama pull qwen2.5vl:7b`,
 w configu ustaw `ai.provider: ollama`.
+
+## Najlepsze okazje na telefon
+
+Okazje z dużym zyskiem (domyślnie ≥ 200 zł) i niskim ryzykiem (≤ 30 pkt),
+które szybko schodzą, są oznaczone 🔥. Bot pinguje Cię na Discordzie
+(`notify.mention_user_id`) i wysyła push przez [ntfy](https://ntfy.sh)
+(`notify.ntfy_topic`). Wymyśl długą, trudną do zgadnięcia nazwę tematu, bo kto ją
+zna, ten widzi powiadomienia. Zwykłe oferty przychodzą na kanał bez dźwięku.
+
+## Jak szybko schodzi
+
+Z ofert, które się sprzedały, bot liczy typowy czas sprzedaży i liczbę
+sprzedaży na tydzień dla podobnych rzeczy. Widać to przy każdej ofercie.
+Rzeczy, które schodzą dłużej niż `max_days_to_sell` (domyślnie 30 dni), dostają
+uwagę i nie są oznaczane jako najlepsze okazje. Uwaga: bot liczy czas od
+momentu, gdy sam zobaczył ofertę, więc przez pierwsze tygodnie wynik jest zaniżony.
+
+## Ogłoszenie do odsprzedaży
+
+Po `/kupione` bot od razu proponuje tytuł, opis (napisany naturalnie, nie jak
+przez AI) i dwie ceny: za ile wystawić i poniżej ilu nie schodzić przy
+negocjacjach. Ponownie: `/ogloszenie oferta:<link>`. Bez AI dostajesz prosty szablon.
+
+## Diagnostyka
+
+Przed pierwszym uruchomieniem:
+
+```bash
+python -m sniper.check config.yaml
+```
+
+Sprawdza, czy Vinted odpowiada (i nie blokuje), jakie pola zwraca, czy działa
+token Discorda, kanał, klucz do AI i Allegro. Niczego nie wysyła ani nie kupuje.
 
 ## Uruchomienie
 

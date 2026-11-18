@@ -28,6 +28,8 @@ class Comparable:
     title: str
     price: float
     condition: str = ""
+    # Ile dni oferta wisiała, zanim się sprzedała (tylko dla sprzedanych)
+    days_listed: float | None = None
 
 
 @dataclass
@@ -70,11 +72,11 @@ def _trim_outliers(prices: list[float]) -> list[float]:
     return [p for p in prices if 0.4 * m <= p <= 2.5 * m]
 
 
-def select_comparables(
+def select_similar(
     title: str, condition: str, exclude_id: int | None,
     pool: list[Comparable], cfg: StrategyConfig,
-) -> list[float]:
-    """Ceny ofert podobnych do danej: podobny tytuł, bez atrap/pudełek, najlepiej ten sam stan."""
+) -> list[Comparable]:
+    """Oferty podobne do danej: podobny tytuł, bez atrap/pudełek, najlepiej ten sam stan."""
     similar = [
         c for c in pool
         if c.id != exclude_id
@@ -82,8 +84,36 @@ def select_comparables(
         and similarity(title, c.title) >= cfg.similarity_min
     ]
     same_condition = [c for c in similar if condition and c.condition == condition]
-    chosen = same_condition if len(same_condition) >= cfg.min_comparables else similar
-    return _trim_outliers([c.price for c in chosen])
+    return same_condition if len(same_condition) >= cfg.min_comparables else similar
+
+
+def select_comparables(
+    title: str, condition: str, exclude_id: int | None,
+    pool: list[Comparable], cfg: StrategyConfig,
+) -> list[float]:
+    """Ceny podobnych ofert, bez skrajnych wartości."""
+    return _trim_outliers([c.price for c in select_similar(title, condition, exclude_id, pool, cfg)])
+
+
+@dataclass
+class Liquidity:
+    median_days: float   # typowy czas od wystawienia do sprzedaży
+    per_week: float      # ile podobnych sprzedaje się tygodniowo
+    samples: int
+
+    def describe(self) -> str:
+        return f"~{self.median_days:.0f} dni, {self.per_week:.1f} szt./tydz. ({self.samples} sprzedanych)"
+
+
+def liquidity(
+    title: str, condition: str, sold: list[Comparable], cfg: StrategyConfig,
+) -> Liquidity | None:
+    """Jak szybko schodzą podobne rzeczy, na podstawie ofert, które się sprzedały."""
+    similar = [c for c in select_similar(title, condition, None, sold, cfg) if c.days_listed is not None]
+    if len(similar) < cfg.min_price_samples:
+        return None
+    weeks = max(cfg.price_history_days / 7, 1)
+    return Liquidity(median([c.days_listed for c in similar]), len(similar) / weeks, len(similar))
 
 
 def market_price(

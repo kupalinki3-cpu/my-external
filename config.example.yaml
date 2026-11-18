@@ -21,6 +21,13 @@ ai:
   ollama_url: http://localhost:11434
   ollama_model: qwen2.5vl:7b
 
+notify:
+  mention_user_id: null      # Twoje ID na Discordzie: bot oznaczy Cię przy najlepszych okazjach
+  ping_min_profit: 200       # "najlepsza okazja" = zysk >= 200 zł...
+  ping_max_risk: 30          # ...i ryzyko <= 30 pkt
+  ntfy_topic: null           # push na telefon: zainstaluj aplikację ntfy, wpisz tu wymyślony temat
+  ntfy_url: https://ntfy.sh
+
 allegro:
   enabled: false             # dodatkowa wycena z Allegro (oficjalne API)
   client_id_env: ALLEGRO_CLIENT_ID
@@ -51,6 +58,7 @@ strategy:
   price_drop_window: 0.35    # śledź oferty droższe max o 35% od opłacalnej ceny
   price_drop_days: 14        # jak długo śledzić
   price_check_every_min: 30  # co ile sprawdzać cenę śledzonej oferty
+  max_days_to_sell: 30       # dłużej = uwaga "wolno schodzi" i brak pingu
   risk:
     medium: 30
     high: 60                 # od tylu punktów oferta idzie do Approve/Deny jako ryzykowna

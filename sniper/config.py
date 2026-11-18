@@ -105,7 +105,21 @@ class StrategyConfig:
     price_drop_window: float = 0.35
     price_drop_days: int = 14
     price_check_every_min: int = 30
+    # Powyżej tylu dni typowej sprzedaży oferta dostaje uwagę "wolno schodzi"
+    max_days_to_sell: float = 30.0
     risk: RiskThresholds = field(default_factory=RiskThresholds)
+
+
+@dataclass
+class NotifyConfig:
+    # Kogo pingować przy najlepszych okazjach (ID użytkownika Discord)
+    mention_user_id: int | None = None
+    # Okazja jest "priorytetowa", gdy zysk >= tyle i ryzyko <= tyle punktów
+    ping_min_profit: float = 200.0
+    ping_max_risk: int = 30
+    # Push na telefon przez ntfy (aplikacja ntfy, temat wymyślasz sam)
+    ntfy_topic: str | None = None
+    ntfy_url: str = "https://ntfy.sh"
 
 
 @dataclass
@@ -123,6 +137,7 @@ class Config:
     watches: list[Watch]
     messages: MessagesConfig = field(default_factory=MessagesConfig)
     allegro: AllegroConfig = field(default_factory=AllegroConfig)
+    notify: NotifyConfig = field(default_factory=NotifyConfig)
     database: str = "sniper.db"
 
 
@@ -138,5 +153,6 @@ def load_config(path: str | Path) -> Config:
         watches=[Watch(**w) for w in raw.get("watches") or []],
         messages=MessagesConfig(**(raw.get("messages") or {})),
         allegro=AllegroConfig(**(raw.get("allegro") or {})),
+        notify=NotifyConfig(**(raw.get("notify") or {})),
         database=raw.get("database", "sniper.db"),
     )

@@ -22,7 +22,8 @@ from .feedback import build_report, feedback_examples, format_report
 from .filters.ai import make_classifier
 from .models import Decision, Listing
 from .photos import PhotoChecker
-from .pricing import market_price, max_buy_price
+from .pricing import liquidity, market_price, max_buy_price
+from .resale import ListingWriter
 from .vinted import VintedClient, is_sold, parse_listing
 
 log = logging.getLogger("sniper")
@@ -68,6 +69,7 @@ async def evaluate_and_post(item: dict, listing: Listing, watch: Watch, market, 
     if details is None:
         return
     listing = parse_listing(item, watch.name, details)
+    svc.db.set_description(listing.id, listing.description)
 
     extra = await svc.photos.check(listing) if svc.photos else []
     examples = feedback_examples(svc.db.recent_feedback(watch.name))
@@ -76,6 +78,21 @@ async def evaluate_and_post(item: dict, listing: Listing, watch: Watch, market, 
     if market:
         ev.market_note = market.describe(listing.currency or "zł")
     ev.alert_note = alert_note
+
+    s, n = svc.cfg.strategy, svc.cfg.notify
+    slow = False
+    sold = svc.db.comparables(watch.name, "sold", s.price_history_days)
+    if liq := liquidity(listing.title, listing.condition, sold, s):
+        ev.liquidity_note = liq.describe()
+        if liq.median_days > s.max_days_to_sell:
+            slow = True
+            ev.reasons.append(f"wolno schodzi ({liq.describe()})")
+    ev.priority = (
+        ev.decision in (Decision.BUY, Decision.OFFER)
+        and ev.risk_score <= n.ping_max_risk
+        and (ev.expected_profit or 0) >= n.ping_min_profit
+        and not slow
+    )
     log.info("[%s] %s | %.0f | %s | ryzyko %s | %s", watch.name, listing.title, listing.price,
              ev.decision.value, ev.risk_score, "; ".join(ev.reasons))
     if ev.decision == Decision.SKIP:
@@ -221,7 +238,8 @@ def main() -> None:
     db.import_watches(cfg.watches)
     if (thr := db.get_setting("risk_high")) is not None:
         cfg.strategy.risk.high = int(thr)
-    bot = SniperBot(cfg, db, make_scanner(cfg, db))
+    writer = ListingWriter(cfg.ai) if cfg.ai.enabled else None
+    bot = SniperBot(cfg, db, make_scanner(cfg, db), writer=writer)
     bot.run(token, log_handler=None)
 
 
