@@ -12,7 +12,9 @@ from .pricing import expected_profit, offer_price
 
 
 class Classifier(Protocol):
-    async def classify(self, listing: Listing, query: str) -> AIVerdict | None: ...
+    async def classify(
+        self, listing: Listing, query: str, examples: list[str] | None = None
+    ) -> AIVerdict | None: ...
 
 
 # Pewność AI, powyżej której kategoria inna niż "genuine" od razu odrzuca ofertę
@@ -41,6 +43,8 @@ async def evaluate(
     ref: float | None,
     cfg: StrategyConfig,
     classifier: Classifier | None = None,
+    extra_risks: list[tuple[str, int]] | None = None,
+    examples: list[str] | None = None,
 ) -> Evaluation:
     ev = Evaluation(listing=listing, decision=Decision.SKIP, reference_price=ref)
 
@@ -74,13 +78,13 @@ async def evaluate(
         score += 15
         reasons.append(f"bardzo niska cena ({ratio:.0%} rynku)")
 
-    for reason, pts in rules.soft + seller_risk(listing):
+    for reason, pts in rules.soft + seller_risk(listing) + (extra_risks or []):
         score += pts
         reasons.append(reason)
 
     # 4. AI (tekst + zdjęcia)
     if classifier is not None:
-        verdict = await classifier.classify(listing, watch.search_text)
+        verdict = await classifier.classify(listing, watch.search_text, examples=examples)
         ev.ai = verdict
         if verdict is None:
             score += 15

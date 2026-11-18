@@ -65,12 +65,13 @@ class AIClassifier:
         self.cfg = cfg
         self.client = client or anthropic.AsyncAnthropic()
 
-    def _content(self, listing: Listing, query: str, with_images: bool) -> list[dict]:
+    def _content(self, listing: Listing, query: str, with_images: bool,
+                 examples: list[str] | None = None) -> list[dict]:
         content: list[dict] = []
         if with_images:
             for url in listing.photos[: self.cfg.max_images]:
                 content.append({"type": "image", "source": {"type": "url", "url": url}})
-        content.append({"type": "text", "text": listing_prompt(listing, query)})
+        content.append({"type": "text", "text": listing_prompt(listing, query, examples)})
         return content
 
     async def _call(self, content: list[dict]):
@@ -88,14 +89,15 @@ class AIClassifier:
             fallbacks="default",
         )
 
-    async def classify(self, listing: Listing, query: str) -> AIVerdict | None:
+    async def classify(self, listing: Listing, query: str,
+                       examples: list[str] | None = None) -> AIVerdict | None:
         try:
             try:
-                resp = await self._call(self._content(listing, query, with_images=True))
+                resp = await self._call(self._content(listing, query, True, examples))
             except anthropic.BadRequestError as e:
                 # Najczęściej: zdjęcie z CDN Vinted nie dało się pobrać
                 log.warning("AI: błąd ze zdjęciami (%s), ponawiam bez zdjęć", e)
-                resp = await self._call(self._content(listing, query, with_images=False))
+                resp = await self._call(self._content(listing, query, False, examples))
         except anthropic.RateLimitError:
             log.warning("AI: limit zapytań, pomijam klasyfikację")
             return None
@@ -114,8 +116,14 @@ class AIClassifier:
         return parse_verdict(text)
 
 
-def listing_prompt(listing: Listing, query: str) -> str:
-    return (
+def listing_prompt(listing: Listing, query: str, examples: list[str] | None = None) -> str:
+    history = ""
+    if examples:
+        history = (
+            "Recent decisions of this buyer on similar listings (use them to calibrate):\n"
+            + "\n".join(f"- {e}" for e in examples) + "\n\n"
+        )
+    return history + (
         f"Buyer is searching for: {query}\n"
         f"Title: {listing.title}\n"
         f"Price: {listing.price} {listing.currency}\n"
@@ -161,7 +169,8 @@ class OllamaClassifier:
         except httpx.HTTPError:
             return None
 
-    async def classify(self, listing: Listing, query: str) -> AIVerdict | None:
+    async def classify(self, listing: Listing, query: str,
+                       examples: list[str] | None = None) -> AIVerdict | None:
         urls = listing.photos[: self.cfg.max_images]
         images = [b for b in await asyncio.gather(*(self._image_b64(u) for u in urls)) if b]
         payload = {
@@ -171,7 +180,7 @@ class OllamaClassifier:
             "options": {"temperature": 0},
             "messages": [
                 {"role": "system", "content": SYSTEM},
-                {"role": "user", "content": listing_prompt(listing, query), "images": images},
+                {"role": "user", "content": listing_prompt(listing, query, examples), "images": images},
             ],
         }
         try:

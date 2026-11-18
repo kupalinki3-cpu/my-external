@@ -80,3 +80,5 @@ class Evaluation:
     ai: AIVerdict | None = None
     # Skąd wzięła się cena rynkowa, np. "1850 zł (podobne oferty, 23 ofert)"
     market_note: str = ""
+    # Dodatkowy nagłówek alertu, np. "📉 cena spadła z 1900 na 1500 zł"
+    alert_note: str = ""

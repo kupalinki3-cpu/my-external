@@ -42,6 +42,19 @@ class VintedConfig:
 class DiscordConfig:
     channel_id: int = 0
     token_env: str = "DISCORD_TOKEN"
+    # ID serwera: komendy /... pojawią się od razu (bez tego do godziny)
+    guild_id: int | None = None
+
+
+@dataclass
+class AllegroConfig:
+    enabled: bool = False
+    client_id_env: str = "ALLEGRO_CLIENT_ID"
+    client_secret_env: str = "ALLEGRO_CLIENT_SECRET"
+    limit: int = 60
+    cache_minutes: int = 60
+    # Dodatkowe parametry wyszukiwania, np. tylko używane
+    extra_params: dict = field(default_factory=dict)
 
 
 @dataclass
@@ -88,6 +101,10 @@ class StrategyConfig:
     too_good_ratio: float = 0.30
     min_price_samples: int = 5
     price_history_days: int = 30
+    # Śledź oferty droższe o maksymalnie tyle od opłacalnej ceny (0.35 = 35%)
+    price_drop_window: float = 0.35
+    price_drop_days: int = 14
+    price_check_every_min: int = 30
     risk: RiskThresholds = field(default_factory=RiskThresholds)
 
 
@@ -105,6 +122,7 @@ class Config:
     strategy: StrategyConfig
     watches: list[Watch]
     messages: MessagesConfig = field(default_factory=MessagesConfig)
+    allegro: AllegroConfig = field(default_factory=AllegroConfig)
     database: str = "sniper.db"
 
 
@@ -119,5 +137,6 @@ def load_config(path: str | Path) -> Config:
         strategy=StrategyConfig(risk=risk, **strategy_raw),
         watches=[Watch(**w) for w in raw.get("watches") or []],
         messages=MessagesConfig(**(raw.get("messages") or {})),
+        allegro=AllegroConfig(**(raw.get("allegro") or {})),
         database=raw.get("database", "sniper.db"),
     )

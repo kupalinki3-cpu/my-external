@@ -25,7 +25,7 @@ class FakeAI:
         self.verdict = verdict
         self.calls = 0
 
-    async def classify(self, listing, query):
+    async def classify(self, listing, query, examples=None):
         self.calls += 1
         return self.verdict
 

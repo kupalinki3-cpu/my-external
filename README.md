@@ -34,6 +34,45 @@ jak przez człowieka, np. *"hej, jestem zainteresowany kupnem. czy ciuch jest
 oryginalny? dałbym 210 zł, pasuje?"*. Bot niczego nie kupuje sam: najpierw pytasz,
 a kupujesz, jak sprzedawca odpowie.
 
+## Ochrona przed scamem: kradzione zdjęcia
+
+Każde zdjęcie dostaje "odcisk" (dHash), który nie zmienia się po przeskalowaniu
+ani kompresji. Bot zapamiętuje odciski wszystkich ofert, które widzi. Jeśli
+zdjęcie pierwszy raz pojawiło się u innego sprzedawcy, oferta dostaje 60 pkt
+ryzyka i zawsze trafia do Approve/Deny. Właściciel, który wystawia rzecz ponownie,
+nie jest oskarżany, bo liczy się, kto wrzucił zdjęcie pierwszy.
+
+## Spadki cen
+
+Oferty trochę za drogie (do 35% powyżej opłacalnej ceny) bot śledzi przez 14 dni
+i sprawdza co 30 minut. Gdy sprzedawca obniży cenę do opłacalnej, przychodzi
+alert *„📉 Cena spadła z 2600 na 1500 zł”*.
+
+## Komendy na Discordzie
+
+| Komenda | Co robi |
+|---|---|
+| `/obserwuj nazwa fraza [rodzaj] [cena_max] [min_zysk] [cena_ref]` | dodaje lub zmienia obserwację |
+| `/usun nazwa` | usuwa obserwację |
+| `/pauza [nazwa]` / `/wznow [nazwa]` | wstrzymuje jedną obserwację albo cały bot |
+| `/lista` | pokazuje obserwacje |
+| `/kupione oferta cena` | zapisuje zakup (link albo id z Vinted) |
+| `/sprzedane zakup cena` | zapisuje sprzedaż (numer zakupu albo link) |
+| `/stats` | zysk, liczba sprzedanych, średni czas sprzedaży, wyniki wg obserwacji |
+| `/raport` | czego bot nauczył się z Twoich Approve/Deny i sugerowany próg ryzyka |
+| `/prog wartosc` | zmienia próg wysokiego ryzyka |
+
+Komendy zarządzające (obserwuj, usun, pauza, wznow, prog) widzą domyślnie tylko
+admini serwera.
+
+## Nauka z Twoich decyzji
+
+- `/raport` pokazuje, które powody alertów prawie zawsze zatwierdzasz (fałszywe
+  alarmy), i proponuje próg ryzyka najlepiej zgodny z Twoimi decyzjami
+  (po 15 ocenach). Raport przychodzi też sam raz w tygodniu.
+- Ostatnie decyzje dla danej obserwacji trafiają do AI jako przykłady, więc
+  model dopasowuje się do tego, co uważasz za dobrą okazję.
+
 ## Opłacalność
 
 ```
@@ -52,7 +91,11 @@ zysk     = sprzedaż − koszt
    wystawiają drogo i nigdy nie sprzedają.
 2. **Ceny sprzedanych ofert**: oferty, które zniknęły z wyników i zostały
    sprzedane (mediana z 30 dni).
-3. **`reference_price` z configu**, jeśli ustawisz: działa jak górny limit.
+3. **Allegro** (opcjonalnie, `allegro.enabled`): podobne oferty z Allegro przez
+   oficjalne API, ten sam percentyl. Wymaga aplikacji na
+   https://apps.developer.allegro.pl, a wyszukiwanie ofert Allegro daje tylko
+   zweryfikowanym aplikacjom. Bez dostępu bot sam wyłączy to źródło.
+4. **`reference_price` z configu**, jeśli ustawisz: działa jak górny limit.
 
 Wszystkie progi zmienisz w sekcji `strategy`.
 
@@ -80,10 +123,13 @@ cp config.example.yaml config.yaml     # uzupełnij kanał i obserwacje
 
 export DISCORD_TOKEN=...               # token bota z Discord Developer Portal
 export ANTHROPIC_API_KEY=...           # klucz do Claude (gdy ai.provider: anthropic)
+export ALLEGRO_CLIENT_ID=...           # opcjonalnie, gdy allegro.enabled
+export ALLEGRO_CLIENT_SECRET=...
 python -m sniper.main config.yaml
 ```
 
-Bot Discord potrzebuje tylko uprawnień: *Send Messages*, *Embed Links*.
+Bot Discord potrzebuje uprawnień *Send Messages*, *Embed Links* i zaproszenia
+ze scope `applications.commands` (dla komend /...).
 
 Testy: `pytest`
 

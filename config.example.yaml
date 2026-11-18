@@ -9,6 +9,7 @@ vinted:
 discord:
   channel_id: 123456789012345678   # kanał, na który lecą oferty
   token_env: DISCORD_TOKEN         # nazwa zmiennej środowiskowej z tokenem
+  guild_id: 123456789012345678     # ID serwera: komendy /... pojawią się od razu
 
 ai:
   enabled: true
@@ -19,6 +20,15 @@ ai:
   # Dla provider: ollama (najpierw: ollama pull qwen2.5vl:7b)
   ollama_url: http://localhost:11434
   ollama_model: qwen2.5vl:7b
+
+allegro:
+  enabled: false             # dodatkowa wycena z Allegro (oficjalne API)
+  client_id_env: ALLEGRO_CLIENT_ID
+  client_secret_env: ALLEGRO_CLIENT_SECRET
+  limit: 60
+  cache_minutes: 60
+  extra_params:
+    parameter.11323: "11323_2"   # tylko używane (sprawdź id parametru stanu w dokumentacji Allegro)
 
 messages:
   gender: m                  # m / f: "wziął" / "wzięła" w wiadomościach do sprzedawców
@@ -38,10 +48,15 @@ strategy:
   too_good_ratio: 0.30       # poniżej 30% rynku = podejrzanie tanio
   min_price_samples: 5       # tyle sprzedaży potrzeba do mediany
   price_history_days: 30
+  price_drop_window: 0.35    # śledź oferty droższe max o 35% od opłacalnej ceny
+  price_drop_days: 14        # jak długo śledzić
+  price_check_every_min: 30  # co ile sprawdzać cenę śledzonej oferty
   risk:
     medium: 30
     high: 60                 # od tylu punktów oferta idzie do Approve/Deny jako ryzykowna
 
+# Obserwacje z configu są wczytywane do bazy przy pierwszym starcie.
+# Potem zarządzasz nimi z Discorda: /obserwuj, /usun, /pauza, /lista
 watches:
   - name: iphone-13-pro
     search_text: "iphone 13 pro"

@@ -94,6 +94,7 @@ def market_price(
     cfg: StrategyConfig,
     active: list[Comparable],
     sold: list[Comparable] | None = None,
+    external: dict[str, list[Comparable]] | None = None,
 ) -> MarketEstimate | None:
     estimates: list[MarketEstimate] = []
 
@@ -104,6 +105,12 @@ def market_price(
     sold_prices = select_comparables(title, condition, listing_id, sold or [], cfg)
     if len(sold_prices) >= cfg.min_price_samples:
         estimates.append(MarketEstimate(median(sold_prices), "sprzedane", len(sold_prices)))
+
+    # Inne serwisy (np. Allegro): ten sam percentyl co dla ofert z Vinted
+    for source, pool in (external or {}).items():
+        ext = select_comparables(title, condition="", exclude_id=None, pool=pool, cfg=cfg)
+        if len(ext) >= cfg.min_comparables:
+            estimates.append(MarketEstimate(percentile(ext, cfg.resale_percentile), source, len(ext)))
 
     if watch.reference_price:
         estimates.append(MarketEstimate(float(watch.reference_price), "ręcznie", 0))
@@ -124,3 +131,10 @@ def expected_profit(price: float, ref: float, cfg: StrategyConfig) -> float:
 
 def offer_price(price: float, cfg: StrategyConfig) -> float:
     return float(round(price * (1 - cfg.offer_discount)))
+
+
+def max_buy_price(ref: float, min_profit: float, cfg: StrategyConfig) -> float:
+    """Najwyższa cena oferty, przy której po zniżce (offer_discount) wychodzi min_profit."""
+    resale = ref * (1 - cfg.resale_haircut)
+    budget = resale - cfg.buyer_fee_fixed - cfg.shipping_cost - min_profit
+    return max(0.0, budget / ((1 - cfg.offer_discount) * (1 + cfg.buyer_fee_pct)))
