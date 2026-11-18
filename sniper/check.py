@@ -9,7 +9,7 @@ sekrety (tokeny, klucze) nie są wypisywane.
 from __future__ import annotations
 
 import asyncio
-import os
+import re
 import sys
 
 import httpx
@@ -30,11 +30,58 @@ def keys(d: dict | None, depth: int = 1) -> str:
     ) + "}"
 
 
+SEARCH_PATHS = ["/api/v2/catalog/items", "/web/api/core/catalog/items", "/api/v2/catalog/items/"]
+DETAIL_PATHS = ["/api/v2/items/{id}", "/api/v2/items/{id}/details", "/web/api/core/items/{id}",
+                "/api/v2/item_upload/items/{id}"]
+
+
+def _json_items(resp: httpx.Response) -> list | None:
+    if "json" not in resp.headers.get("content-type", ""):
+        return None
+    try:
+        data = resp.json()
+    except ValueError:
+        return None
+    items = data.get("items") if isinstance(data, dict) else None
+    return items if isinstance(items, list) else []
+
+
+async def probe_search(client: VintedClient, query: str) -> tuple[str, bool, list] | None:
+    """Próbuje różnych adresów i trybów logowania. Zwraca pierwszy działający."""
+    params = {"search_text": query, "order": "newest_first", "per_page": 5, "page": 1}
+    working = None
+    for path in SEARCH_PATHS:
+        for bearer in (False, True):
+            resp = await client._get(path, params, bearer=bearer)
+            items = _json_items(resp)
+            mark = OK if items else (WARN if items == [] else BAD)
+            kind = "JSON" if items is not None else resp.headers.get("content-type", "?").split(";")[0]
+            print(f"   {mark} {path} {'+ token' if bearer else '':8} HTTP {resp.status_code}, {kind}, "
+                  f"ofert: {len(items) if items else 0}")
+            if items and working is None:
+                working = (path, bearer, items)
+    return working
+
+
+async def probe_html(client: VintedClient, query: str) -> list[int]:
+    """Zwykła strona wyszukiwania: czy da się z niej czytać oferty i jakie API wywołuje."""
+    resp = await client.http.get(f"{client.base}/catalog", params={"search_text": query, "order": "newest_first"},
+                                 headers={"Accept": "text/html"})
+    html = resp.text
+    ids = list(dict.fromkeys(int(i) for i in re.findall(r"/items/(\d{6,})", html)))
+    apis = sorted(set(re.findall(r"[\"'](/(?:web/)?api/[a-zA-Z0-9_/\-]+)", html)))[:15]
+    print(f"   Strona wyszukiwania HTML: HTTP {resp.status_code}, linków do ofert: {len(ids)}, "
+          f"__NEXT_DATA__: {'tak' if '__NEXT_DATA__' in html else 'nie'}")
+    if apis:
+        print(f"   Adresy API widoczne w stronie: {', '.join(apis)}")
+    return ids
+
+
 async def check_vinted(cfg: Config) -> None:
     print("\n== Vinted ==")
     if not cfg.watches:
-        print(f"{BAD} Brak obserwacji w configu (watches)")
-        return
+        print(f"{WARN} Brak obserwacji w configu (watches), testuję na frazie 'iphone'")
+    query = cfg.watches[0].search_text if cfg.watches else "iphone"
     client = VintedClient(cfg.vinted)
     try:
         home = await client.http.get(client.base, headers={"Accept": "text/html"})
@@ -43,48 +90,58 @@ async def check_vinted(cfg: Config) -> None:
               f"ciasteczka: {', '.join(sorted(client.http.cookies.keys())) or 'brak'}")
         if home.status_code == 403:
             print("   Prawdopodobnie ochrona antybotowa. Trzeba będzie przejść na przeglądarkę (Playwright).")
-
-        watch = cfg.watches[0]
-        resp = await client._get("/api/v2/catalog/items", {
-            "search_text": watch.search_text, "order": "newest_first", "per_page": 5, "page": 1,
-        })
-        items = resp.json().get("items", []) if resp.status_code == 200 else []
-        print(f"{OK if items else BAD} Wyszukiwanie „{watch.search_text}”: HTTP {resp.status_code}, ofert: {len(items)}")
-        if resp.status_code != 200:
-            print(f"   Odpowiedź: {resp.text[:300]}")
-            return
-        if not items:
             return
 
-        first = items[0]
-        print(f"   Pola oferty: {keys(first)}")
-        print(f"   price = {first.get('price')!r}, status = {first.get('status')!r}")
-        print(f"   user = {keys(first.get('user'))}")
-        listing = parse_listing(first, watch.name)
-        print(f"   Odczytane: „{listing.title}”, {listing.price} {listing.currency}, "
-              f"zdjęć: {len(listing.photos)}, stan: {listing.condition!r}")
+        print(f"\nWyszukiwanie „{query}” (różne warianty):")
+        found = await probe_search(client, query)
+        html_ids = await probe_html(client, query)
 
-        det = await client._get(f"/api/v2/items/{first['id']}")
-        item = det.json().get("item") if det.status_code == 200 else None
-        print(f"{OK if item else BAD} Szczegóły oferty: HTTP {det.status_code}")
-        if item:
-            user = item.get("user") or {}
-            checks = {
-                "opis (description)": bool(item.get("description")),
-                "zdjęcia (photos)": bool(item.get("photos")),
-                "liczba opinii (user.feedback_count)": "feedback_count" in user,
-                "ocena (user.feedback_reputation)": "feedback_reputation" in user,
-                "czy sprzedane (is_closed)": "is_closed" in item,
-            }
-            for name, present in checks.items():
-                print(f"   {OK if present else WARN} {name}")
-            print(f"   Pola szczegółów: {keys(item)}")
-            print(f"   Pola sprzedawcy: {keys(user)}")
+        item_id = None
+        if found:
+            path, bearer, items = found
+            first = items[0]
+            item_id = first.get("id")
+            print(f"\n{OK} Działa: {path}" + (" z tokenem" if bearer else ""))
+            print(f"   Pola oferty: {keys(first)}")
+            print(f"   price = {first.get('price')!r}, status = {first.get('status')!r}")
+            print(f"   user = {keys(first.get('user'))}")
+            listing = parse_listing(first, "test")
+            print(f"   Odczytane: „{listing.title}”, {listing.price} {listing.currency}, "
+                  f"zdjęć: {len(listing.photos)}, stan: {listing.condition!r}")
         else:
-            print(f"   Odpowiedź: {det.text[:300]}")
-            page = await client.http.get(listing.url, headers={"Accept": "text/html"}) if listing.url else None
-            if page is not None:
-                print(f"   Strona oferty HTML: HTTP {page.status_code} (jeśli 200, opis da się czytać ze strony)")
+            print(f"\n{BAD} Żaden adres API nie zwrócił ofert.")
+            item_id = html_ids[0] if html_ids else None
+
+        if item_id:
+            print(f"\nSzczegóły oferty {item_id}:")
+            detail_ok = None
+            for dpath in DETAIL_PATHS:
+                for bearer in (False, True):
+                    resp = await client._get(dpath.format(id=item_id), bearer=bearer)
+                    is_json = "json" in resp.headers.get("content-type", "")
+                    data = resp.json() if is_json and resp.status_code == 200 else None
+                    item = (data.get("item") or data) if isinstance(data, dict) else None
+                    good = bool(item and ("description" in item or "photos" in item))
+                    print(f"   {OK if good else BAD} {dpath} {'+ token' if bearer else '':8} HTTP {resp.status_code}")
+                    if good and detail_ok is None:
+                        detail_ok = (dpath, bearer, item)
+            if detail_ok:
+                dpath, bearer, item = detail_ok
+                user = item.get("user") or {}
+                print(f"   {OK} Pola szczegółów: {keys(item)}")
+                print(f"   Pola sprzedawcy: {keys(user)}")
+            else:
+                page = await client.http.get(f"{client.base}/items/{item_id}", headers={"Accept": "text/html"})
+                print(f"   Strona oferty HTML: HTTP {page.status_code}, "
+                      f"opis w stronie: {'tak' if 'description' in page.text else 'nie wiadomo'}")
+
+        if found:
+            path, bearer, _ = found
+            print("\n👉 Wpisz do config.yaml w sekcji vinted:")
+            print(f"     search_path: \"{path}\"")
+            print(f"     bearer_auth: {'true' if bearer else 'false'}")
+            if item_id and detail_ok:
+                print(f"     details_path: \"{detail_ok[0]}\"")
     except httpx.HTTPError as e:
         print(f"{BAD} Błąd połączenia: {e!r}")
     finally:

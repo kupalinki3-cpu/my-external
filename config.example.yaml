@@ -5,6 +5,10 @@ vinted:
   poll_interval_sec: 20      # nie schodź poniżej ~15 s, bo grozi blokada IP
   per_page: 48
   seed_pages: 5              # tyle stron ofert pobiera na start jako bazę do porównań cen
+  # Adresy API (nieoficjalne). Jeśli sprawdz.bat pokaże inne działające, wpisz je tutaj:
+  search_path: "/api/v2/catalog/items"
+  details_path: "/api/v2/items/{id}"
+  bearer_auth: false
 
 discord:
   channel_id: 123456789012345678   # kanał, na który lecą oferty

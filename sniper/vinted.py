@@ -35,13 +35,21 @@ class VintedClient:
             await self.http.get(self.base, headers={"Accept": "text/html"})
             self._has_session = True
 
-    async def _get(self, path: str, params: dict | None = None) -> httpx.Response:
+    def _auth_headers(self, bearer: bool | None = None) -> dict[str, str]:
+        use = self.cfg.bearer_auth if bearer is None else bearer
+        token = self.http.cookies.get("access_token_web")
+        return {"Authorization": f"Bearer {token}"} if use and token else {}
+
+    async def _get(self, path: str, params: dict | None = None,
+                   bearer: bool | None = None) -> httpx.Response:
         await self._ensure_session()
-        resp = await self.http.get(f"{self.base}{path}", params=params)
+        url = f"{self.base}{path}"
+        resp = await self.http.get(url, params=params, headers=self._auth_headers(bearer))
         if resp.status_code == 401:
             self._has_session = False
+            self.http.cookies.clear()
             await self._ensure_session()
-            resp = await self.http.get(f"{self.base}{path}", params=params)
+            resp = await self.http.get(url, params=params, headers=self._auth_headers(bearer))
         return resp
 
     async def search_newest(self, watch: Watch, page: int = 1) -> list[dict[str, Any]]:
@@ -60,13 +68,13 @@ class VintedClient:
         if watch.brand_ids:
             params["brand_ids"] = ",".join(map(str, watch.brand_ids))
 
-        resp = await self._get("/api/v2/catalog/items", params)
+        resp = await self._get(self.cfg.search_path, params)
         resp.raise_for_status()
         return resp.json().get("items", [])
 
     async def item_details(self, item_id: int) -> dict[str, Any] | None:
         """Szczegóły (opis, wszystkie zdjęcia, opinie sprzedawcy). None = oferta zniknęła."""
-        resp = await self._get(f"/api/v2/items/{item_id}")
+        resp = await self._get(self.cfg.details_path.format(id=item_id))
         if resp.status_code == 404:
             return None
         resp.raise_for_status()

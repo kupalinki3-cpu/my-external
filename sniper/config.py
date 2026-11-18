@@ -33,6 +33,11 @@ class VintedConfig:
     per_page: int = 48
     # Ile stron ofert pobrać przy starcie, żeby mieć z czym porównywać ceny
     seed_pages: int = 5
+    # Adresy API Vinted (nieoficjalne, mogą się zmienić; sprawdz.bat podpowie właściwe)
+    search_path: str = "/api/v2/catalog/items"
+    details_path: str = "/api/v2/items/{id}"
+    # Wysyłaj token sesji (ciasteczko access_token_web) w nagłówku Authorization
+    bearer_auth: bool = False
     user_agent: str = (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
         "(KHTML, like Gecko) Chrome/130.0 Safari/537.36"
