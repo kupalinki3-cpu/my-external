@@ -56,6 +56,33 @@ do wklejenia, oraz `clips.json` ze wszystkim naraz.
 **Czat z Twitcha:** `pip install chat-downloader`, potem
 `chat_downloader https://www.twitch.tv/videos/123 --output chat.json`.
 
+## Jakość
+
+Domyślnie `--quality high`: jeśli źródło ma 60 kl./s (np. gameplay), klip też
+ma płynne 60 kl./s, a do tego ostre skalowanie (lanczos) i mała kompresja
+(CRF 17). `--quality normal` daje szybszy render i mniejsze pliki.
+
+Największy wpływ na jakość ma źródło. Stream 1080p60 da dobry wynik.
+Przy `--layout crop` środek kadru 1080p jest powiększany prawie 2×, więc
+wyjdzie trochę miękko. Nagrywaj w 1440p albo używaj `--layout blur`.
+
+## Muzyka
+
+```bash
+python -m autoclip stream.mp4 --music muzyka/          # losowy utwór z katalogu na każdy klip
+python -m autoclip stream.mp4 --music beat.mp3 --music-volume 0.12
+```
+
+Muzyka gra cicho w tle i **sama się ścisza, gdy ktoś mówi** (ducking), a na
+końcu się wycisza. Krótki utwór zapętla się do długości klipu.
+
+**Viralowych utworów nie wgrywaj do pliku.** TikTok i YouTube wykrywają
+muzykę automatycznie: wyciszą dźwięk, zablokują film albo zabiorą zarobki.
+Viralowy dźwięk dodaj **w aplikacji** przy wrzucaniu. To legalne (aplikacje
+mają licencje), a film trafia na stronę dźwięku, co daje więcej wyświetleń.
+Wtedy renderuj bez `--music`. Do pliku dawaj tylko muzykę bez praw autorskich,
+np. z YouTube Audio Library.
+
 ## Ważne opcje
 
 | Opcja | Co robi |
@@ -68,6 +95,9 @@ do wklejenia, oraz `clips.json` ze wszystkim naraz.
 | `--no-end-effect` | bez efektu na końcu |
 | `--whisper medium` | dokładniejsze napisy (wolniej); `tiny` = szybko, gorzej |
 | `--speech-language pl` | wymuś język mowy |
+| `--quality high/normal` | jakość (domyślnie high, 60 kl./s jeśli źródło ma) |
+| `--music plik/katalog` | muzyka w tle (bez praw autorskich), ściszana pod głos |
+| `--music-volume 0.18` | głośność muzyki |
 | `--no-ai` | bez Claude (klipy po punktach, proste tytuły) |
 | `--no-scenes` | pomiń analizę obrazu (szybciej przy bardzo długich nagraniach) |
 

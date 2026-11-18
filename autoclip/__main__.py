@@ -12,6 +12,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import random
 import re
 import sys
 import time
@@ -20,7 +21,7 @@ from pathlib import Path
 
 from .chat import load_chat_times
 from .highlights import ClipRules, pick_candidates, score_timeline
-from .media import has_audio, loudness_envelope, probe_duration, scene_changes
+from .media import has_audio, loudness_envelope, probe_duration, probe_fps, scene_changes
 from .render import RenderStyle, render_clip
 from .titles import make_plans
 from .transcribe import EMPTY, transcribe
@@ -49,6 +50,16 @@ def download(url: str, workdir: Path) -> str:
         return ydl.prepare_filename(info).rsplit(".", 1)[0] + ".mp4"
 
 
+MUSIC_EXT = {".mp3", ".wav", ".m4a", ".aac", ".ogg", ".flac"}
+
+
+def music_tracks(path: str) -> list[Path]:
+    p = Path(path)
+    if p.is_file():
+        return [p]
+    return sorted(f for f in p.glob("*") if f.suffix.lower() in MUSIC_EXT) if p.is_dir() else []
+
+
 def parse_args(argv: list[str]) -> argparse.Namespace:
     p = argparse.ArgumentParser(prog="autoclip", description="Długi stream -> gotowe Shortsy")
     p.add_argument("input", help="plik wideo albo link (YouTube, Twitch VOD, ...)")
@@ -69,6 +80,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     p.add_argument("--end-speed", type=float, default=1.0, help="przyspieszenie końcówki, np. 1.5")
     p.add_argument("--end-zoom", type=float, default=0.35, help="najazd na końcu (0.35 = 35%%)")
     p.add_argument("--outro", default="", help="tekst na końcu, np. 'OBSERWUJ PO WIĘCEJ'")
+    p.add_argument("--quality", choices=["normal", "high"], default="high",
+                   help="high: 60 kl./s (jeśli źródło ma), mniejsza kompresja; normal: szybciej, mniejsze pliki")
+    p.add_argument("--music", help="plik albo katalog z muzyką w tle (losowy utwór na klip). "
+                   "Tylko muzyka bez praw autorskich! Viralowe dźwięki dodawaj w aplikacji TikTok/Shorts.")
+    p.add_argument("--music-volume", type=float, default=0.18, help="głośność muzyki (0.18 = cicho pod głosem)")
     p.add_argument("--min-len", type=float, default=15)
     p.add_argument("--max-len", type=float, default=59)
     p.add_argument("--dry-run", action="store_true", help="tylko pokaż znalezione momenty, nie renderuj")
@@ -123,7 +139,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.dry_run:
         return 0
 
-    style = RenderStyle(
+    opts = dict(
         layout=args.layout,
         facecam=tuple(float(x) for x in args.facecam.split(",")) if args.facecam else None,
         subtitles=not args.no_subs,
@@ -132,8 +148,19 @@ def main(argv: list[str] | None = None) -> int:
         end_zoom=args.end_zoom,
         outro_text=args.outro,
     )
+    if args.quality == "high":
+        src_fps = probe_fps(video)
+        style = RenderStyle.high_quality(src_fps, **opts)
+        log.info("Jakość: wysoka (%d kl./s, źródło %.0f kl./s)", style.fps, src_fps)
+    else:
+        style = RenderStyle(**opts)
     if style.layout == "facecam" and not style.facecam:
         log.error("--layout facecam wymaga --facecam x,y,szer,wys")
+        return 1
+
+    tracks = music_tracks(args.music) if args.music else []
+    if args.music and not tracks:
+        log.error("Nie znalazłem plików muzyki w %s", args.music)
         return 1
 
     summary = []
@@ -141,11 +168,16 @@ def main(argv: list[str] | None = None) -> int:
         out = out_dir / f"{i:02d}-{slugify(plan.title)}.mp4"
         log.info("Renderuję %s", out.name)
         words = transcript.words_between(plan.start, plan.end)
+        if tracks:
+            style.music = str(random.choice(tracks))
+            style.music_volume = args.music_volume
+            log.info("  muzyka: %s", Path(style.music).name)
         render_clip(video, plan.start, plan.end, out, style, words, plan.hook, audio)
         caption = plan.title + "\n\n" + " ".join(f"#{h}" for h in plan.hashtags)
         out.with_suffix(".txt").write_text(caption, encoding="utf-8")
         summary.append({"file": out.name, "title": plan.title, "hook": plan.hook,
                         "hashtags": plan.hashtags, "start": plan.start, "end": plan.end,
+                        "music": Path(style.music).name if style.music else None,
                         "score": round(plan.score, 2)})
     (out_dir / "clips.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
     log.info("Gotowe: %d klipów w %s (%.1f min)", len(summary), out_dir, (time.time() - t_start) / 60)

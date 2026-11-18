@@ -34,6 +34,19 @@ class RenderStyle:
     end_speed: float = 1.0                # >1 przyspiesza końcówkę, np. 1.5
     outro_text: str = ""
     crf: int = 21
+    preset: str = "veryfast"
+    fps: int = 30
+    audio_bitrate: str = "160k"
+    # Muzyka w tle: TWÓJ plik (bez praw autorskich). Ścisza się, gdy ktoś mówi.
+    music: str | None = None
+    music_volume: float = 0.18
+    music_offset: float = 0.0             # od której sekundy utworu zacząć (np. od refrenu)
+
+    @classmethod
+    def high_quality(cls, source_fps: float, **kw) -> "RenderStyle":
+        """Lepsza jakość: płynne 60 kl./s (jeśli źródło ma tyle), mniejsza kompresja."""
+        fps = 60 if source_fps >= 50 else 30
+        return cls(crf=17, preset="slow", fps=fps, audio_bitrate="192k", **kw)
 
 
 # ---------- napisy ASS ----------
@@ -109,21 +122,21 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 
 def layout_filter(style: RenderStyle) -> str:
     if style.layout == "crop":
-        return f"[0:v]scale=-2:{H},crop={W}:{H}[base]"
+        return f"[0:v]scale=-2:{H}:flags=lanczos,crop={W}:{H}[base]"
     if style.layout == "facecam" and style.facecam:
         x, y, w, h = style.facecam
         top, bottom = int(H * 0.4), H - int(H * 0.4)
         return (
             f"[0:v]split=2[cam][game];"
             f"[cam]crop=iw*{w}:ih*{h}:iw*{x}:ih*{y},"
-            f"scale={W}:{top}:force_original_aspect_ratio=increase,crop={W}:{top}[top];"
-            f"[game]scale=-2:{bottom},crop={W}:{bottom}[bot];"
+            f"scale={W}:{top}:force_original_aspect_ratio=increase:flags=lanczos,crop={W}:{top}[top];"
+            f"[game]scale=-2:{bottom}:flags=lanczos,crop={W}:{bottom}[bot];"
             f"[top][bot]vstack[base]"
         )
     return (
         f"[0:v]split=2[bg][fg];"
         f"[bg]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H},boxblur=25:3[bgb];"
-        f"[fg]scale={W}:-2[fgs];"
+        f"[fg]scale={W}:-2:flags=lanczos[fgs];"
         f"[bgb][fgs]overlay=(W-w)/2:(H-h)/2[base]"
     )
 
@@ -158,15 +171,30 @@ def build_filtergraph(duration: float, style: RenderStyle, audio: bool, subs_fil
         span = final - t0
         z = style.end_zoom
         chains.append(
-            f"[{v}]fps=30,zoompan=z='if(gte(it,{t0:.3f}),1+{z}*min((it-{t0:.3f})/{span:.3f},1),1)'"
-            f":x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s={W}x{H}:fps=30,"
+            f"[{v}]fps={style.fps},zoompan=z='if(gte(it,{t0:.3f}),1+{z}*min((it-{t0:.3f})/{span:.3f},1),1)'"
+            f":x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':d=1:s={W}x{H}:fps={style.fps},"
             f"drawbox=enable='between(t,{t0:.3f},{t0 + 0.12:.3f})':color=white@0.75:t=fill[vout]"
         )
     else:
-        chains.append(f"[{v}]fps=30[vout]")
+        chains.append(f"[{v}]fps={style.fps}[vout]")
 
-    if audio:
-        chains.append(f"[{a}]loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000[aout]")
+    norm = "loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000"
+    if style.music:
+        fade_at = max(0.0, final - 1.0)
+        chains.append(
+            f"[1:a]atrim={style.music_offset:.3f}:{style.music_offset + final:.3f},asetpts=PTS-STARTPTS,"
+            f"aformat=sample_rates=48000:channel_layouts=stereo,volume={style.music_volume},"
+            f"afade=t=in:d=0.5,afade=t=out:st={fade_at:.3f}:d=1[mus]"
+        )
+        if audio:
+            # Ducking: muzyka cichnie, gdy w nagraniu ktoś mówi albo jest głośno
+            chains.append(f"[{a}]aformat=sample_rates=48000:channel_layouts=stereo,asplit=2[voice][sc]")
+            chains.append("[mus][sc]sidechaincompress=threshold=0.02:ratio=8:attack=20:release=350[duck]")
+            chains.append(f"[voice][duck]amix=inputs=2:duration=first:normalize=0,{norm}[aout]")
+        else:
+            chains.append(f"[mus]{norm}[aout]")
+    elif audio:
+        chains.append(f"[{a}]{norm}[aout]")
     return ";".join(chains), final
 
 
@@ -181,11 +209,15 @@ def render_clip(video: str, start: float, end: float, out: Path, style: RenderSt
         graph, _ = build_filtergraph(duration, style, audio, subs)
         cmd = [
             "ffmpeg", "-v", "error", "-y", "-ss", f"{start:.3f}", "-t", f"{duration:.3f}",
-            "-i", str(Path(video).resolve()), "-filter_complex", graph, "-map", "[vout]",
+            "-i", str(Path(video).resolve()),
         ]
-        if audio:
-            cmd += ["-map", "[aout]", "-c:a", "aac", "-b:a", "160k"]
-        cmd += ["-c:v", "libx264", "-preset", "veryfast", "-crf", str(style.crf), "-pix_fmt", "yuv420p",
+        if style.music:
+            # -stream_loop: krótki utwór zapętla się do długości klipu
+            cmd += ["-stream_loop", "-1", "-i", str(Path(style.music).resolve())]
+        cmd += ["-filter_complex", graph, "-map", "[vout]"]
+        if audio or style.music:
+            cmd += ["-map", "[aout]", "-c:a", "aac", "-b:a", style.audio_bitrate]
+        cmd += ["-c:v", "libx264", "-preset", style.preset, "-crf", str(style.crf), "-pix_fmt", "yuv420p",
                 "-movflags", "+faststart", str(out.resolve())]
         res = subprocess.run(cmd, cwd=tmp, capture_output=True, text=True)
         if res.returncode != 0:

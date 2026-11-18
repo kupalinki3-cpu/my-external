@@ -129,3 +129,42 @@ def test_render_vertical_clip(sample_video, tmp_path, style):
     assert any(s["codec_type"] == "audio" for s in info["streams"])
     expected = 8 - 1.2 + 1.2 / 1.5 if style.end_speed > 1 else 8
     assert abs(float(info["format"]["duration"]) - expected) < 0.25
+
+
+def test_high_quality_render_keeps_60fps(tmp_path):
+    src = tmp_path / "src60.mp4"
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=s=1920x1080:r=60:d=6",
+                    "-f", "lavfi", "-i", "sine=d=6", "-c:v", "libx264", "-preset", "ultrafast", "-c:a", "aac",
+                    "-shortest", str(src)], check=True)
+    from autoclip.media import probe_fps
+    assert round(probe_fps(str(src))) == 60
+    style = RenderStyle.high_quality(probe_fps(str(src)))
+    assert style.fps == 60 and style.crf == 17
+    out = tmp_path / "hq.mp4"
+    render_clip(str(src), 0.5, 5.5, out, style, [])
+    rate = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
+                           "stream=avg_frame_rate", "-of", "csv=p=0", str(out)],
+                          capture_output=True, text=True).stdout.strip()
+    assert rate == "60/1"
+    assert RenderStyle.high_quality(29.97).fps == 30
+
+
+def test_music_is_mixed_ducked_and_faded(sample_video, tmp_path):
+    music = tmp_path / "beat.mp3"
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "sine=f=880:d=3", str(music)], check=True)
+    graph, final = build_filtergraph(8.0, RenderStyle(music=str(music)), audio=True, subs_file=None)
+    assert "sidechaincompress" in graph and "afade=t=out" in graph and "[1:a]" in graph
+    out = tmp_path / "m.mp4"
+    # utwór 3 s zapętla się do długości klipu 8 s
+    render_clip(str(sample_video), 1.0, 9.0, out, RenderStyle(music=str(music), end_effect=False), [])
+    info = probe(out)
+    assert any(s["codec_type"] == "audio" for s in info["streams"])
+    assert abs(float(info["format"]["duration"]) - 8) < 0.25
+
+
+def test_music_tracks_from_dir(tmp_path):
+    from autoclip.__main__ import music_tracks
+    (tmp_path / "a.mp3").write_bytes(b"x")
+    (tmp_path / "notes.txt").write_text("x")
+    assert [p.name for p in music_tracks(str(tmp_path))] == ["a.mp3"]
+    assert music_tracks(str(tmp_path / "brak")) == []

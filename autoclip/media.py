@@ -19,6 +19,16 @@ def probe_duration(path: str) -> float:
     return float(json.loads(out)["format"]["duration"])
 
 
+def probe_fps(path: str) -> float:
+    out = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=avg_frame_rate",
+         "-of", "csv=p=0", path],
+        capture_output=True, text=True, check=True,
+    ).stdout.strip()
+    num, _, den = out.partition("/")
+    return float(num) / float(den or 1) if num and float(den or 1) else 30.0
+
+
 def has_audio(path: str) -> bool:
     out = subprocess.run(
         ["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries", "stream=index",
