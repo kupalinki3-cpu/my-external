@@ -62,9 +62,27 @@ alert *„📉 Cena spadła z 2600 na 1500 zł”*.
 | `/stats` | zysk, liczba sprzedanych, średni czas sprzedaży, wyniki wg obserwacji |
 | `/raport` | czego bot nauczył się z Twoich Approve/Deny i sugerowany próg ryzyka |
 | `/prog wartosc` | zmienia próg wysokiego ryzyka |
+| `/klip zrodlo [ile] [uklad] [kontekst] [outro] [muzyka]` | robi Shortsy z nagrania (patrz niżej) |
 
 Komendy zarządzające (obserwuj, usun, pauza, wznow, prog) widzą domyślnie tylko
 admini serwera.
+
+## Klipy z Discorda: `/klip`
+
+Ten sam bot robi też Shortsy ze streamów (auto-clipper z folderu `autoclip/`).
+
+- `/klip zrodlo:https://www.twitch.tv/videos/...`: z linku,
+- `/klip zrodlo:stream.mp4`: z pliku w folderze `nagrania/`. Bot podpowiada
+  nazwy plików, gdy zaczniesz pisać. Pliki spoza tego folderu są niedostępne.
+
+Bot pokazuje postęp (pobieranie, analiza, mowa, render) i wrzuca każdy klip
+na kanał od razu, gdy jest gotowy, z tytułem i hashtagami do skopiowania oraz
+przyciskiem 🗑️ do usuwania słabych. Pełna jakość zostaje w `clips/`. Discord
+bez Nitro przyjmuje pliki do 10 MB, więc większe klipy idą jako podgląd 720p.
+
+Naraz idzie jedna robota, bo klipowanie mocno obciąża komputer. Ustawienia
+są w sekcji `clips` configu. Jeśli chcesz tylko klipów, bez snipera, zostaw
+puste `watches`.
 
 ## Nauka z Twoich decyzji
 

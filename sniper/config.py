@@ -123,6 +123,23 @@ class NotifyConfig:
 
 
 @dataclass
+class ClipsConfig:
+    """Auto-clipper z Discorda (/klip)."""
+    enabled: bool = True
+    input_dir: str = "nagrania"       # stąd /klip bierze pliki po nazwie
+    out_dir: str = "clips"
+    upload_limit_mb: float = 10       # limit plików na Discordzie (bez Nitro 10 MB)
+    layout: str = "blur"
+    quality: str = "high"
+    whisper: str = "small"
+    subtitles: bool = True            # False = bez rozpoznawania mowy (dużo szybciej)
+    language: str = "polski"
+    outro: str = ""
+    end_speed: float = 1.0
+    music_dir: str | None = None
+
+
+@dataclass
 class MessagesConfig:
     # m / f - forma czasowników w wiadomościach ("wziął" / "wzięła")
     gender: str = "m"
@@ -138,6 +155,7 @@ class Config:
     messages: MessagesConfig = field(default_factory=MessagesConfig)
     allegro: AllegroConfig = field(default_factory=AllegroConfig)
     notify: NotifyConfig = field(default_factory=NotifyConfig)
+    clips: ClipsConfig = field(default_factory=ClipsConfig)
     database: str = "sniper.db"
 
 
@@ -154,5 +172,6 @@ def load_config(path: str | Path) -> Config:
         messages=MessagesConfig(**(raw.get("messages") or {})),
         allegro=AllegroConfig(**(raw.get("allegro") or {})),
         notify=NotifyConfig(**(raw.get("notify") or {})),
+        clips=ClipsConfig(**(raw.get("clips") or {})),
         database=raw.get("database", "sniper.db"),
     )

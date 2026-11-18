@@ -128,6 +128,11 @@ class SniperBot(discord.Client):
         self._http = httpx.AsyncClient(timeout=10)
         self.tree = app_commands.CommandTree(self)
         self._register_commands()
+        self.clip_jobs = None
+        if cfg.clips.enabled:
+            from .clips import ClipJobs, register_clip_commands
+            self.clip_jobs = ClipJobs(cfg)
+            register_clip_commands(self.tree, self.clip_jobs)
 
     async def setup_hook(self) -> None:
         if self.cfg.discord.guild_id:
@@ -194,6 +199,9 @@ class SniperBot(discord.Client):
         if interaction.type != discord.InteractionType.component:
             return
         custom_id = (interaction.data or {}).get("custom_id", "")
+        if custom_id.startswith("clipdel:") and self.clip_jobs:
+            await self.clip_jobs.handle_delete(interaction, custom_id.split(":", 1)[1])
+            return
         parts = custom_id.split(":")
         if len(parts) != 3 or parts[0] != PREFIX:
             return

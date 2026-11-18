@@ -37,6 +37,19 @@ allegro:
   extra_params:
     parameter.11323: "11323_2"   # tylko używane (sprawdź id parametru stanu w dokumentacji Allegro)
 
+clips:                       # auto-clipper z Discorda: /klip
+  enabled: true
+  input_dir: nagrania        # wrzucaj tu nagrania, /klip podpowie nazwy plików
+  out_dir: clips             # tu lądują klipy w pełnej jakości
+  upload_limit_mb: 10        # limit Discorda (10 bez Nitro); większe klipy idą jako podgląd 720p
+  layout: blur               # blur | crop
+  quality: high              # high = 60 kl./s jeśli źródło ma
+  whisper: small             # tiny/base = szybciej, medium = dokładniejsze napisy
+  subtitles: true            # false = bez napisów z mowy (dużo szybciej na słabszym komputerze)
+  outro: ""                  # np. "OBSERWUJ PO WIĘCEJ"
+  end_speed: 1.0             # np. 1.5 = przyspieszona końcówka
+  music_dir: null            # folder z muzyką BEZ praw autorskich
+
 messages:
   gender: m                  # m / f: "wziął" / "wzięła" w wiadomościach do sprzedawców
 
