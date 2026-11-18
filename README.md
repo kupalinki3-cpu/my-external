@@ -166,6 +166,21 @@ python -m sniper.check config.yaml
 Sprawdza, czy Vinted odpowiada (i nie blokuje), jakie pola zwraca, czy działa
 token Discorda, kanał, klucz do AI i Allegro. Niczego nie wysyła ani nie kupuje.
 
+## Szybki start (Windows)
+
+1. Zainstaluj Pythona i gita: `winget install Python.Python.3.12` i `winget install Git.Git`
+2. Pobierz projekt (`git clone ...`), wejdź do folderu, kliknij dwukrotnie **`instaluj.bat`**.
+   Zainstaluje biblioteki i ffmpeg, a potem otworzy `config.yaml` do uzupełnienia.
+3. W `config.yaml` uzupełnij: `discord.token`, `discord.channel_id`, `discord.guild_id`,
+   oraz `ai.api_key` albo `ai.enabled: false`.
+4. **`sprawdz.bat`**: sprawdza, czy wszystko ma dostęp.
+5. **`start.bat`**: odpala bota (sniper + `/klip`). Jeśli bot padnie, sam się
+   zrestartuje po 15 s. Przy błędzie w configu zatrzyma się i powie, co poprawić.
+6. **`aktualizuj.bat`**: pobiera nową wersję.
+
+`config.yaml` zawiera token i klucze. Nie wysyłaj go nikomu i nie wrzucaj na
+GitHuba (jest w `.gitignore`).
+
 ## Uruchomienie
 
 ```bash

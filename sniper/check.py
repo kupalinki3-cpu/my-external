@@ -14,7 +14,7 @@ import sys
 
 import httpx
 
-from .config import Config, load_config
+from .config import Config, apply_api_keys, discord_token, load_config
 from .vinted import VintedClient, parse_listing
 
 OK, BAD, WARN = "✅", "❌", "⚠️"
@@ -93,9 +93,9 @@ async def check_vinted(cfg: Config) -> None:
 
 async def check_discord(cfg: Config) -> None:
     print("\n== Discord ==")
-    token = os.environ.get(cfg.discord.token_env)
+    token = discord_token(cfg)
     if not token:
-        print(f"{BAD} Brak zmiennej {cfg.discord.token_env}")
+        print(f"{BAD} Brak tokena: wpisz discord.token w config.yaml")
         return
     async with httpx.AsyncClient(base_url="https://discord.com/api/v10",
                                  headers={"Authorization": f"Bot {token}"}, timeout=15) as http:
@@ -140,7 +140,7 @@ async def check_ai(cfg: Config) -> None:
     except anthropic.APIStatusError as e:
         print(f"{BAD} Błąd API: HTTP {e.status_code}")
     except Exception as e:  # np. brak jakichkolwiek danych logowania
-        print(f"{BAD} Brak klucza: ustaw ANTHROPIC_API_KEY ({type(e).__name__})")
+        print(f"{BAD} Brak klucza: wpisz ai.api_key w config.yaml albo ustaw ai.enabled: false ({type(e).__name__})")
 
 
 async def check_allegro(cfg: Config) -> None:
@@ -172,6 +172,7 @@ async def run(cfg: Config) -> None:
 
 def main() -> None:
     cfg = load_config(sys.argv[1] if len(sys.argv) > 1 else "config.yaml")
+    apply_api_keys(cfg)
     asyncio.run(run(cfg))
 
 

@@ -1,0 +1,12 @@
+@echo off
+chcp 65001 >nul
+cd /d "%~dp0"
+set PYTHONUTF8=1
+set PY=python
+where python >nul 2>nul || set PY=py
+title Aktualizacja
+git pull
+%PY% -m pip install -r requirements.txt
+echo.
+echo Zaktualizowano. Odpal start.bat
+pause

@@ -8,12 +8,14 @@ vinted:
 
 discord:
   channel_id: 123456789012345678   # kanał, na który lecą oferty
-  token_env: DISCORD_TOKEN         # nazwa zmiennej środowiskowej z tokenem
+  token: ""                        # token bota z discord.com/developers (NIKOMU go nie pokazuj)
+  token_env: DISCORD_TOKEN         # albo: nazwa zmiennej środowiskowej z tokenem
   guild_id: 123456789012345678     # ID serwera: komendy /... pojawią się od razu
 
 ai:
   enabled: true
   provider: anthropic        # anthropic = Claude przez API | ollama = lokalny model
+  api_key: ""                # klucz z console.anthropic.com (albo enabled: false = bez AI)
   model: claude-opus-5-5     # tańsza opcja: claude-haiku-5-5 (~40x taniej)
   effort: low                # low wystarcza do klasyfikacji, high = dokładniej, drożej
   max_images: 4

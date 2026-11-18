@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+import os
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 
 import yaml
@@ -41,6 +42,8 @@ class VintedConfig:
 @dataclass
 class DiscordConfig:
     channel_id: int = 0
+    # Token bota: wpisz tutaj ALBO ustaw zmienną środowiskową o nazwie z token_env
+    token: str | None = None
     token_env: str = "DISCORD_TOKEN"
     # ID serwera: komendy /... pojawią się od razu (bez tego do godziny)
     guild_id: int | None = None
@@ -65,6 +68,8 @@ class AIConfig:
     model: str = "claude-opus-5-5"
     effort: str = "low"
     max_images: int = 4
+    # Klucz do Claude: wpisz tutaj ALBO ustaw zmienną ANTHROPIC_API_KEY
+    api_key: str | None = None
     ollama_url: str = "http://localhost:11434"
     ollama_model: str = "qwen2.5vl:7b"
 
@@ -159,19 +164,42 @@ class Config:
     database: str = "sniper.db"
 
 
+def _make(cls, data: dict | None, section: str, **extra):
+    """Tworzy sekcję configu; literówki i nieznane pola dają ostrzeżenie zamiast błędu."""
+    data = dict(data or {})
+    known = {f.name for f in fields(cls)}
+    for key in sorted(set(data) - known):
+        print(f"⚠️  config.yaml: nieznane pole '{section}.{key}' (pomijam). Literówka?")
+        data.pop(key)
+    return cls(**data, **extra)
+
+
 def load_config(path: str | Path) -> Config:
     raw = yaml.safe_load(Path(path).read_text(encoding="utf-8")) or {}
+    top = {"vinted", "discord", "ai", "strategy", "watches", "messages", "allegro", "notify", "clips", "database"}
+    for key in sorted(set(raw) - top):
+        print(f"⚠️  config.yaml: nieznana sekcja '{key}' (pomijam). Literówka?")
     strategy_raw = dict(raw.get("strategy") or {})
-    risk = RiskThresholds(**(strategy_raw.pop("risk", None) or {}))
+    risk = _make(RiskThresholds, strategy_raw.pop("risk", None), "strategy.risk")
     return Config(
-        vinted=VintedConfig(**(raw.get("vinted") or {})),
-        discord=DiscordConfig(**(raw.get("discord") or {})),
-        ai=AIConfig(**(raw.get("ai") or {})),
-        strategy=StrategyConfig(risk=risk, **strategy_raw),
-        watches=[Watch(**w) for w in raw.get("watches") or []],
-        messages=MessagesConfig(**(raw.get("messages") or {})),
-        allegro=AllegroConfig(**(raw.get("allegro") or {})),
-        notify=NotifyConfig(**(raw.get("notify") or {})),
-        clips=ClipsConfig(**(raw.get("clips") or {})),
+        vinted=_make(VintedConfig, raw.get("vinted"), "vinted"),
+        discord=_make(DiscordConfig, raw.get("discord"), "discord"),
+        ai=_make(AIConfig, raw.get("ai"), "ai"),
+        strategy=_make(StrategyConfig, strategy_raw, "strategy", risk=risk),
+        watches=[_make(Watch, w, "watches") for w in raw.get("watches") or []],
+        messages=_make(MessagesConfig, raw.get("messages"), "messages"),
+        allegro=_make(AllegroConfig, raw.get("allegro"), "allegro"),
+        notify=_make(NotifyConfig, raw.get("notify"), "notify"),
+        clips=_make(ClipsConfig, raw.get("clips"), "clips"),
         database=raw.get("database", "sniper.db"),
     )
+
+
+def discord_token(cfg: Config) -> str | None:
+    return cfg.discord.token or os.environ.get(cfg.discord.token_env)
+
+
+def apply_api_keys(cfg: Config) -> None:
+    """Klucz Claude z configu trafia tam, gdzie szuka go biblioteka Anthropic."""
+    if cfg.ai.api_key and not os.environ.get("ANTHROPIC_API_KEY"):
+        os.environ["ANTHROPIC_API_KEY"] = cfg.ai.api_key

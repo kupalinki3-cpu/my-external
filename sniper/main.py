@@ -7,14 +7,15 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import os
 import random
 import sys
 import time
+
+import discord
 from dataclasses import dataclass, field
 
 from .allegro import AllegroPrices
-from .config import Config, Watch, load_config
+from .config import Config, Watch, apply_api_keys, discord_token, load_config
 from .db import Database
 from .discord_bot import SniperBot
 from .engine import evaluate, has_potential
@@ -228,19 +229,40 @@ def make_scanner(cfg: Config, db: Database):
     return scanner
 
 
+# Kod wyjścia 2 = błąd konfiguracji: start.bat wtedy nie restartuje bota w kółko
+CONFIG_ERROR = 2
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-    cfg = load_config(sys.argv[1] if len(sys.argv) > 1 else "config.yaml")
-    token = os.environ.get(cfg.discord.token_env)
+    path = sys.argv[1] if len(sys.argv) > 1 else "config.yaml"
+    try:
+        cfg = load_config(path)
+    except FileNotFoundError:
+        print(f"❌ Nie ma pliku {path}. Skopiuj config.example.yaml jako config.yaml i uzupełnij.")
+        sys.exit(CONFIG_ERROR)
+    except Exception as e:  # zły YAML, złe typy
+        print(f"❌ Błąd w {path}: {e}")
+        sys.exit(CONFIG_ERROR)
+    token = discord_token(cfg)
     if not token:
-        sys.exit(f"Ustaw zmienną środowiskową {cfg.discord.token_env} z tokenem bota Discord")
+        print("❌ Brak tokena bota: wpisz discord.token w config.yaml")
+        sys.exit(CONFIG_ERROR)
+    if not cfg.discord.channel_id:
+        print("❌ Brak discord.channel_id w config.yaml (prawy klik na kanał -> Kopiuj ID)")
+        sys.exit(CONFIG_ERROR)
+    apply_api_keys(cfg)
     db = Database(cfg.database)
     db.import_watches(cfg.watches)
     if (thr := db.get_setting("risk_high")) is not None:
         cfg.strategy.risk.high = int(thr)
     writer = ListingWriter(cfg.ai) if cfg.ai.enabled else None
     bot = SniperBot(cfg, db, make_scanner(cfg, db), writer=writer)
-    bot.run(token, log_handler=None)
+    try:
+        bot.run(token, log_handler=None)
+    except discord.LoginFailure:
+        print("❌ Discord odrzucił token. Skopiuj nowy (Bot -> Reset Token) do discord.token w config.yaml")
+        sys.exit(CONFIG_ERROR)
 
 
 if __name__ == "__main__":
